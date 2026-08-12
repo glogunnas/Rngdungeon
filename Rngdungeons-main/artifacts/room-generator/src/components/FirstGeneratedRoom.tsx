@@ -4,6 +4,16 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Droplets, RefreshCw, Ruler, 
 type TileId = string;
 type Point = { x: number; y: number };
 type Rect = { x: number; y: number; w: number; h: number };
+type DoorDirection = "top" | "bottom" | "left" | "right";
+type Door = {
+  id: string;
+  direction: DoorDirection;
+  hallway: Point[];
+  doorCell: Point;
+  stairs: Point;
+  entry: boolean;
+  open: boolean;
+};
 type RoomLayout = {
   name: string;
   seed: string;
@@ -12,9 +22,11 @@ type RoomLayout = {
   bridgeCells: Point[];
   stairsUp: [number, number];
   stairsDown: [number, number];
+  doors: Door[];
 };
 
 const TILE_ROOT = "/images/tileset";
+const DOOR_ROOT = "/images/doors";
 const COLS = 24;
 const ROWS = 17;
 const floorTiles = ["B2", "C2", "D2", "E2", "B3", "C3", "D3", "E3", "B4", "C4", "D4", "E4"];
@@ -81,8 +93,98 @@ const layoutFrom = (
     return true;
   });
 
-  return { name, seed, floorRects: finalRects, waterRects: filteredWater, bridgeCells, stairsUp, stairsDown };
+  const doors = createDoorHallways(seed, finalRects);
+  const hallwayRects = doors.map((door) => {
+    const first = door.hallway[0];
+    const last = door.hallway[door.hallway.length - 1];
+    return first.x === last.x
+      ? { x: first.x, y: Math.min(first.y, last.y), w: 1, h: door.hallway.length }
+      : { x: Math.min(first.x, last.x), y: first.y, w: door.hallway.length, h: 1 };
+  });
+
+  return {
+    name,
+    seed,
+    floorRects: [...finalRects, ...hallwayRects],
+    waterRects: filteredWater,
+    bridgeCells,
+    stairsUp,
+    stairsDown,
+    doors,
+  };
 };
+
+function createDoorHallways(seed: string, floorRects: Rect[]): Door[] {
+  const random = createRandom(`${seed}-doors`);
+  const floorCells = rectsToCellSet(floorRects);
+  const directions: Array<{ direction: DoorDirection; dx: number; dy: number }> = [
+    { direction: "top", dx: 0, dy: -1 },
+    { direction: "bottom", dx: 0, dy: 1 },
+    { direction: "left", dx: -1, dy: 0 },
+    { direction: "right", dx: 1, dy: 0 },
+  ];
+  const candidates: Array<{
+    direction: DoorDirection;
+    anchor: Point;
+    hallway: Point[];
+    doorCell: Point;
+    stairs: Point;
+  }> = [];
+
+  for (const cell of floorCells) {
+    const [x, y] = cell.split(",").map(Number);
+    for (const { direction, dx, dy } of directions) {
+      const hallway = Array.from({ length: 4 }, (_, index) => ({ x: x + dx * (index + 1), y: y + dy * (index + 1) }));
+      if (hallway.some((point) => point.x < 1 || point.x >= COLS - 1 || point.y < 1 || point.y >= ROWS - 1)) continue;
+      if (hallway.some((point) => floorCells.has(`${point.x},${point.y}`))) continue;
+      candidates.push({ direction, anchor: { x, y }, hallway, doorCell: hallway[1], stairs: hallway[3] });
+    }
+  }
+
+  // Shuffle deterministically, then keep doors separated so their two-tile
+  // side-door overlays never crowd one another on a small generated map.
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(random() * (index + 1));
+    [candidates[index], candidates[swap]] = [candidates[swap], candidates[index]];
+  }
+
+  const targetCount = Math.min(randomInt(random, 2, 5), candidates.length);
+  const selected: typeof candidates = [];
+  for (const candidate of candidates) {
+    const overlaps = selected.some((other) => {
+      const hallwayCells = new Set(other.hallway.map((point) => `${point.x},${point.y}`));
+      return candidate.hallway.some((point) => hallwayCells.has(`${point.x},${point.y}`));
+    });
+    const tooClose = selected.some((other) => {
+      const distance = Math.abs(other.doorCell.x - candidate.doorCell.x) + Math.abs(other.doorCell.y - candidate.doorCell.y);
+      return distance < 4 || (other.direction === candidate.direction && distance < 7);
+    });
+    if (overlaps || tooClose) continue;
+    selected.push(candidate);
+    if (selected.length >= targetCount) break;
+  }
+  // Extremely compact layouts may not have enough separated candidates, but
+  // still get as many valid door halls as the footprint can accommodate.
+  if (selected.length < targetCount) {
+    for (const candidate of candidates) {
+      if (selected.some((other) => other.doorCell.x === candidate.doorCell.x && other.doorCell.y === candidate.doorCell.y)) continue;
+      if (selected.some((other) => other.hallway.some((point) => candidate.hallway.some((candidatePoint) => point.x === candidatePoint.x && point.y === candidatePoint.y)))) continue;
+      selected.push(candidate);
+      if (selected.length >= targetCount) break;
+    }
+  }
+
+  const entryIndex = selected.length ? Math.floor(random() * selected.length) : -1;
+  return selected.map((candidate, index) => ({
+    id: `door-${index + 1}`,
+    direction: candidate.direction,
+    hallway: candidate.hallway,
+    doorCell: candidate.doorCell,
+    stairs: candidate.stairs,
+    entry: index === entryIndex,
+    open: index === entryIndex,
+  }));
+}
 // Ensure generated floor regions are connected by inserting narrow corridors
 function rectsToCellSet(rects: Rect[]) {
   const cells = new Set<string>();
@@ -803,7 +905,9 @@ function createTinyRoomLayout(seed: string, random: () => number) {
 }
 
 function createMassiveHallLayout(seed: string, random: () => number) {
-  const hall: Rect = { x: 2, y: 2, w: 20, h: 13 };
+  // Keep a four-cell perimeter around the chamber so connection hallways can
+  // always extend fully inside the preview grid.
+  const hall: Rect = { x: 2, y: 5, w: 20, h: 7 };
   const pools = [
     { x: 6, y: 5, w: 6, h: 4 },
     { x: 16, y: 8, w: 5, h: 3 },
@@ -1163,7 +1267,7 @@ const hasPoint = (points: Point[], x: number, y: number) => points.some((point) 
 const isFloor = (layout: RoomLayout, x: number, y: number) => layout.floorRects.some((rect) => inRect(x, y, rect));
 const isWater = (layout: RoomLayout, x: number, y: number) => layout.waterRects.some((rect) => inRect(x, y, rect)) && !hasPoint(layout.bridgeCells, x, y);
 const isOpen = (layout: RoomLayout, x: number, y: number) => isFloor(layout, x, y) || isWater(layout, x, y);
-const isWalkable = (layout: RoomLayout, x: number, y: number) => x >= 0 && x < COLS && y >= 0 && y < ROWS && isFloor(layout, x, y) && !isWater(layout, x, y);
+const isWalkable = (layout: RoomLayout, x: number, y: number) => x >= 0 && x < COLS && y >= 0 && y < ROWS && isFloor(layout, x, y) && !isWater(layout, x, y) && !layout.doors.some((door) => !door.open && door.doorCell.x === x && door.doorCell.y === y);
 
 function waterTile(layout: RoomLayout, x: number, y: number): TileId {
   const edgeTop = !isWater(layout, x, y - 1);
@@ -1237,6 +1341,10 @@ function tileFor(layout: RoomLayout, x: number, y: number): TileId {
   return floorTiles[(x * 3 + y * 5) % floorTiles.length];
 }
 const buildRoom = (layout: RoomLayout) => Array.from({ length: ROWS }, (_, y) => Array.from({ length: COLS }, (_, x) => tileFor(layout, x, y)));
+function doorAssetFor(door: Door) {
+  const family = door.direction === "left" || door.direction === "right" ? "side" : "front";
+  return `${DOOR_ROOT}/${family}-${door.open ? "open" : "closed"}.png`;
+}
 function roleFor(tile: TileId) {
   if (tile === voidTile) return "void";
   if (["H4", "I4", "J4", "K4", "H5", "I5", "J5", "K5"].includes(tile)) return "water";
@@ -1281,14 +1389,14 @@ export function FirstGeneratedRoom() {
     <main className="room-shell">
       <section className="room-frame">
          <header className="room-header"><div><p className="eyebrow">Room generator / shape study</p><h1 className="room-title">{layout.name}</h1><p className="room-subtitle">A varied chamber network assembled from 25 abstract footprint families. Floors remain continuous through halls, while surrounding wall edges define each newly generated shape.</p></div><button className="regen" type="button" onClick={() => setLayout(createRandomLayout())}><RefreshCw size={14} strokeWidth={2.5} /> Regenerate room</button></header>
-        <div className="room-body">
-          <div className="map-stage" aria-label={`${layout.name} tile preview`}><div className="map">{room.flatMap((row, y) => row.map((tile, x) => <img className="tile" key={`${x}-${y}-${tile}`} src={`${TILE_ROOT}/${tile}.png`} alt={`${tile}, ${roleFor(tile)}, grid ${x + 1} by ${y + 1}`} title={`${tile} · ${roleFor(tile)}`} />))}<div className="player-sprite" style={{ left: player.x * 32, top: player.y * 32 }} role="img" aria-label={`Pill character at grid ${player.x + 1} by ${player.y + 1}`}><span className="player-label">P1</span></div></div></div>
+         <div className="room-body">
+           <div className="map-stage" aria-label={`${layout.name} tile preview`}><div className="map">{room.flatMap((row, y) => row.map((tile, x) => <img className="tile" key={`${x}-${y}-${tile}`} src={`${TILE_ROOT}/${tile}.png`} alt={`${tile}, ${roleFor(tile)}, grid ${x + 1} by ${y + 1}`} title={`${tile} · ${roleFor(tile)}`} />))}{layout.doors.map((door) => <img className={`door-overlay door-${door.direction}`} key={door.id} src={doorAssetFor(door)} alt={`${door.open ? "Open" : "Closed"} ${door.direction} door${door.entry ? ", room entry" : ""}`} title={`${door.open ? "Open" : "Closed"} ${door.direction} door · stairs beyond`} style={{ left: door.doorCell.x * 32 - (door.direction === "left" || door.direction === "right" ? 16 : 0), top: door.doorCell.y * 32 - 16 }} />)}<div className="player-sprite" style={{ left: player.x * 32, top: player.y * 32 }} role="img" aria-label={`Pill character at grid ${player.x + 1} by ${player.y + 1}`}><span className="player-label">P1</span></div></div></div>
            <div className="under-map"><span><strong>SEED {layout.seed}</strong> · {COLS} × {ROWS} cells · fresh layout</span><span aria-live="polite">PILL {player.x + 1},{player.y + 1} · {isMobile ? "touch controls active" : "arrow keys / WASD"}</span></div>
           <div className="controls" aria-label="Movement instructions"><span><strong>Move the pill</strong> with arrow keys or WASD.</span><span>Walls and water block movement · bridges remain open.</span></div>
           <div className="mobile-controls" style={isMobile ? { display: "grid" } : undefined} aria-label="Touch movement controls">{moveButtons.map((button) => <button className={`move-button ${button.className}`} key={button.label} type="button" aria-label={button.label} onClick={() => movePlayer(button.dx, button.dy)}>{button.icon}</button>)}</div>
-           <div className="specs"><div className="spec"><div className="spec-label"><Ruler size={12} /> Native scale</div><div className="spec-value">32 × 32 CSS px / tile</div></div><div className="spec"><div className="spec-label"><Droplets size={12} /> Water pockets</div><div className="spec-value">{layout.waterRects.length ? `${layout.waterRects.map((rect) => `${rect.w} × ${rect.h}`).join(" · ")} floor bridges` : "dry footprint"}</div></div><div className="spec"><div className="spec-label"><Sparkles size={12} /> Tile source</div><div className="spec-value">32 × 32 PNG atlas</div></div></div>
-          <div className="legend"><span className="legend-item"><i className="swatch" /> floor + wall cap</span><span className="legend-item"><i className="swatch water" /> water + edge transition</span><span className="legend-item"><i className="swatch stairs" /> ascending / descending</span></div>
-           <p className="note">Generation rule: floors stay on the room footprint and walls occupy the surrounding void. One-tile notches and gaps are filled automatically, so every indent remains at least two tiles wide. Top edges use perspective pieces, side and lower edges use thin caps, and corner pieces appear only where a boundary actually turns.</p>
+           <div className="specs"><div className="spec"><div className="spec-label"><Ruler size={12} /> Native scale</div><div className="spec-value">32 × 32 CSS px / tile</div></div><div className="spec"><div className="spec-label"><Droplets size={12} /> Water pockets</div><div className="spec-value">{layout.waterRects.length ? `${layout.waterRects.map((rect) => `${rect.w} × ${rect.h}`).join(" · ")} floor bridges` : "dry footprint"}</div></div><div className="spec"><div className="spec-label"><Sparkles size={12} /> Door network</div><div className="spec-value">{layout.doors.filter((door) => door.open).length} open entry · {layout.doors.filter((door) => !door.open).length} closed</div></div></div>
+           <div className="legend"><span className="legend-item"><i className="swatch" /> floor + wall cap</span><span className="legend-item"><i className="swatch water" /> water + edge transition</span><span className="legend-item"><i className="swatch stairs" /> ascending / descending</span><span className="legend-item"><i className="swatch door" /> door + stair landing</span></div>
+            <p className="note">Generation rule: every door grows a four-tile, one-cell hallway from the room edge. Its overlay sits on tile two, tile four is a stair landing, and the selected room-entry door stays open while every other connection starts closed. Hall walls are emitted from the surrounding void so future rooms can connect cleanly at each landing.</p>
         </div>
       </section>
     </main>

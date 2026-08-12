@@ -349,6 +349,9 @@
 .map { display:grid; grid-template-columns:repeat(24, 32px); grid-template-rows:repeat(17, 32px); width:max-content; margin:auto; image-rendering:pixelated; image-rendering:crisp-edges; box-shadow:0 0 0 7px #20272d, 0 0 0 8px #59635f; position:relative; }
 .tile { width:32px; height:32px; display:block; image-rendering:pixelated; image-rendering:crisp-edges; }
 .tile:hover { outline:1px solid #e1bc78; outline-offset:-1px; position:relative; z-index:1; }
+.door-overlay { position:absolute; z-index:2; display:block; width:32px; height:48px; image-rendering:pixelated; image-rendering:crisp-edges; pointer-events:none; object-fit:contain; }
+.door-left, .door-right { width:64px; height:64px; }
+.door-left { transform:scaleX(-1); }
 .player-sprite { position:absolute; z-index:3; width:24px; height:28px; margin:2px 4px; border:2px solid #19151a; border-radius:50% 50% 42% 42%; background:linear-gradient(90deg,#f08c83 0 28%,#f8c3a0 28% 72%,#e57d78 72%); box-shadow:0 2px 0 #0b0d10, inset 0 -5px 0 rgba(153,54,76,.38); pointer-events:none; transition:transform 100ms ease-out; }
 .player-sprite::before { content:""; position:absolute; left:5px; top:7px; width:4px; height:4px; border-radius:50%; background:#231c25; box-shadow:8px 0 #231c25; }
 .player-sprite::after { content:""; position:absolute; left:8px; bottom:5px; width:5px; height:2px; border-radius:50%; background:#8e485a; }
@@ -373,6 +376,7 @@
 .swatch { width:8px; height:8px; border:1px solid #c7ad7d; background:#c7ad7d; }
 .swatch.water { background:#5d94a0; border-color:#83bbc0; }
 .swatch.stairs { background:#bd8d45; border-color:#e5bd74; }
+.swatch.door { background:#9a5d52; border-color:#dc9a71; }
 .note { margin:19px 0 0; padding:13px 15px; border-left:2px solid #bd8d45; color:#aeb5af; font-size:10px; line-height:1.7; background:#1c2329; }
 @media (max-width:680px) {
   .room-shell { padding:12px; }
