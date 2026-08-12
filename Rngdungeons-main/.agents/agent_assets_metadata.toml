@@ -1,0 +1,30 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "SmdjM_5Eg0DMZD99BMTFr"
+uri = "file://attached_assets/tileset_palette_32x32.zip"
+type = "unspecified"
+title = "Updated 32×32 Tileset Palette"
+description = "All 60 tiles, your completed labels CSV, coordinate reference, and wall perspective placement rules."
+
+[[outputs]]
+id = "BNtCMnz0glTW-9XsDqvvR"
+uri = "file://attached_assets/tileset_palette/coordinates.png"
+type = "image"
+title = "Tileset Coordinate Reference"
+description = "The full tilesheet enlarged 8× with A1–L5 coordinates overlaid."
+
+[[outputs]]
+id = "fOFPq1unp15ygCcFpdCCF"
+uri = "file://attached_assets/tileset_palette/labels.csv"
+type = "table"
+title = "Tileset Labels CSV"
+description = "A 60-row manifest with tile IDs and pixel coordinates, ready for your labels."
+
+[[outputs]]
+id = "iM2LEWTr_g9x1ypEiG7Fh"
+uri = "file://attached_assets/tileset_palette/tile_rules.md"
+type = "text"
+title = "Tile Placement Rules"
+description = "Documents the perspective wall distinction and metadata needed for procedural room generation."

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/room-generator-web/"
+title = "Room Generator"
+description = "An interactive tile-based room generator with 27 varied abstract footprints, occasional water features, connected sub-room layouts, stairs, collision-aware movement, and responsive controls."
+version = "1.0.0"
+id = "artifacts/room-generator-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/room-generator-web/" ]
+localPort = 26178
+
+[services.development]
+run = "pnpm --filter @workspace/room-generator-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/room-generator-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/room-generator-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26178"
+BASE_PATH = "/room-generator-web/"

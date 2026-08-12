@@ -1,0 +1,1 @@
+- [Imported artifact registration](imported-artifact-registration.md) — an artifact.toml can exist before the artifact/workflow is registered in the workspace

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Room Generator"
+description = "A playable tile-based room generator preview with a pill character, collision-aware movement, keyboard controls, and responsive mobile direction buttons."
+version = "1.0.0"
+id = "artifacts/room-generator"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22990
+
+[services.development]
+run = "pnpm --filter @workspace/room-generator run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/room-generator", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/room-generator/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22990"
+BASE_PATH = "/"
